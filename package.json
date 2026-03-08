@@ -1,5 +1,5 @@
 {
-  "name": "pixelblade-counter-bot",
+  "name": "script-execution-counter-bot",
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
