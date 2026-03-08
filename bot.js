@@ -2,6 +2,9 @@ require("dotenv").config();
 
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
+const http = require("http");
+
+http.createServer((_, res) => res.end("alive")).listen(3000);
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID    = process.env.CHANNEL_ID;
@@ -28,13 +31,13 @@ function buildEmbed(total) {
         .setTitle("Script Execution Counter")
         .setColor(0x5865F2)
         .addFields({ name: "Total Executions", value: `\`\`\`${total.toLocaleString()}\`\`\`` })
-        .setFooter({ text: `Updates every 30s  •  Last updated` })
+        .setFooter({ text: "Updates every 30s  •  Last updated" })
         .setTimestamp();
 }
 
 async function updateEmbed() {
-    const total  = await getTotalExecutions();
-    const embed  = buildEmbed(total);
+    const total = await getTotalExecutions();
+    const embed = buildEmbed(total);
 
     if (!trackedMessage) {
         const channel = await client.channels.fetch(CHANNEL_ID);
