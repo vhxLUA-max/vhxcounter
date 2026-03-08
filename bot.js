@@ -25,7 +25,7 @@ async function getTotalExecutions() {
 
 function buildEmbed(total) {
     return new EmbedBuilder()
-        .setTitle("Pixel Blade — Execution Counter")
+        .setTitle("Script Execution Counter")
         .setColor(0x5865F2)
         .addFields({ name: "Total Executions", value: `\`\`\`${total.toLocaleString()}\`\`\`` })
         .setFooter({ text: `Updates every 30s  •  Last updated` })
