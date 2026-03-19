@@ -64,6 +64,10 @@ client.once("ready", async () => {
     await updateChannelName();
     setInterval(updateEmbed, INTERVAL_MS);
     setInterval(updateChannelName, RENAME_MS);
+    setInterval(() => {
+        const url = process.env.APP_URL;
+        if (url) fetch(url).catch(() => {});
+    }, 240000);
 });
 
 client.login(DISCORD_TOKEN);
