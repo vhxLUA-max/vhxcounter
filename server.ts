@@ -411,16 +411,19 @@ bot.on('interactionCreate', async interaction => {
     const WEBHOOK = 'https://discord.com/api/webhooks/1475304437177385052/D6bMTTr-Y-h5DHkLAvqVEKZ7Yx7ioyqcnm5yIBzk0Dyk82VxhHe_sMlOISMVLjD52cHF';
     const typeLabel = type === 'new' ? 'New' : type === 'update' ? 'Update' : 'Fix';
     const color = type === 'new' ? 0x10b981 : type === 'update' ? 0x6366f1 : 0xf59e0b;
-    const tag = type === 'new' ? '[ NEW ]' : type === 'update' ? '[ UPDATE ]' : '[ FIX ]';
-    const sep = '\u2015'.repeat(28);
+    const tag = type === 'new' ? 'NEW' : type === 'update' ? 'UPDATE' : 'FIX';
     const lines = [
-      `\`\`\`ansi\n\u001b[2;36m vhxLUA \u2502 Script Update \u2502 ${game}\u001b[0m\`\`\``,
-      sep,
-      `**${tag}  ${title}**`,
-      body ? `\`\`\`\n${body}\`\`\`` : '',
-      sep,
-      `\`\`\`ansi\n\u001b[2;32m  SCRIPT   \u2502  vhxlua.vercel.app\n\u001b[2;90m  RELEASED \u2502  ${date}\u001b[0m\`\`\``,
-    ].filter(Boolean).join('\n');
+      '```json',
+      '{',
+      `  "type"    : "${tag}",`,
+      `  "game"    : "${game}",`,
+      `  "title"   : "${title}",`,
+      ...(body ? [`  "details" : "${body}",`] : []),
+      `  "date"    : "${date}",`,
+      `  "script"  : "vhxdashboard.vercel.app"`,
+      '}',
+      '```',
+    ].join('\n');
     await fetch(WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -428,11 +431,12 @@ bot.on('interactionCreate', async interaction => {
         username: 'vhxLUA',
         avatar_url: 'https://vhxlua.vercel.app/favicon.ico',
         embeds: [{
+          title: 'Script Update',
           description: lines,
           color,
-          footer: { text: 'vhxLUA \u2022 Script Hub' },
+          footer: { text: `vhxLUA Script Hub  •  ${date}` },
         }],
-        components: [{ type: 1, components: [{ type: 2, style: 5, label: 'Get Script', url: 'https://vhxlua.vercel.app/?tab=scripts' }] }],
+        components: [{ type: 1, components: [{ type: 2, style: 5, label: 'Get Script', url: 'https://vhxdashboard.vercel.app/?tab=scripts' }] }],
       }),
     }).catch(() => {});
 
