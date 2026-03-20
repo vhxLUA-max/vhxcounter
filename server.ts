@@ -35,7 +35,7 @@ const log = (level: 'INFO' | 'WARN' | 'ERROR', msg: string) => {
 };
 
 // ── MAIN BOT ─────────────────────────────────────────────────────────────────
-const mainBot    = new Client({ intents: [GatewayIntentBits.Guilds] });
+const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 const mainStart  = Date.now();
 let mainOnline   = false;
 let commandCount = 0;
@@ -93,12 +93,12 @@ const commands = [
 
 async function registerCommands() {
   if (!DISCORD_TOKEN_MAIN || !CLIENT_ID || !GUILD_ID) return;
-  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN_MAIN);
+  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
   log('INFO', 'Slash commands registered');
 }
 
-mainBot.on('interactionCreate', async interaction => {
+bot.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   if (CHANNEL_ID && interaction.channelId !== CHANNEL_ID)
     return interaction.reply({ content: `Commands only work in <#${CHANNEL_ID}>`, ephemeral: true });
@@ -352,16 +352,20 @@ mainBot.on('interactionCreate', async interaction => {
   }
 });
 
-mainBot.once('ready', () => {
+bot.once('ready', async () => {
   mainOnline = true;
-  log('INFO', `Main bot online — ${mainBot.user?.tag}`);
+  log('INFO', `Bot online — ${bot.user?.tag}`);
   registerCommands();
+  await updateEmbed();
+  await updateChannelName();
+  setInterval(updateEmbed, 30000);
+  setInterval(updateChannelName, 300000);
 });
 
-// ── COUNTER BOT ───────────────────────────────────────────────────────────────
-const counterBot   = new Client({ intents: [GatewayIntentBits.Guilds] });
+// ── COUNTER FUNCTIONS ─────────────────────────────────────────────────────────
+
 const counterStart = Date.now();
-let counterOnline  = false;
+let counterOnline  = true;
 let trackedMessage: any = null;
 let lastCount: number | null = null;
 
@@ -380,7 +384,7 @@ async function updateEmbed() {
     .setFooter({ text: 'Updates every 30s  •  Last updated' })
     .setTimestamp();
   if (!trackedMessage) {
-    const channel = await counterBot.channels.fetch(COUNTER_CHANNEL_ID) as any;
+    const channel = await bot.channels.fetch(COUNTER_CHANNEL_ID) as any;
     trackedMessage = await channel.send({ embeds: [embed] });
   } else {
     await trackedMessage.edit({ embeds: [embed] });
@@ -393,20 +397,11 @@ async function updateChannelName() {
   if (total === lastCount) return;
   lastCount = total;
   try {
-    const channel = await counterBot.channels.fetch(COUNTER_CHANNEL_ID) as any;
+    const channel = await bot.channels.fetch(COUNTER_CHANNEL_ID) as any;
     await channel.setName(`exec-count-${total.toLocaleString()}`);
     log('INFO', `Counter channel renamed to exec-count-${total.toLocaleString()}`);
   } catch (e: any) { log('WARN', `Channel rename failed: ${e.message}`); }
 }
-
-counterBot.once('ready', async () => {
-  counterOnline = true;
-  log('INFO', `Counter bot online — ${counterBot.user?.tag}`);
-  await updateEmbed();
-  await updateChannelName();
-  setInterval(updateEmbed, 30000);
-  setInterval(updateChannelName, 300000);
-});
 
 // ── BACKGROUND JOBS ───────────────────────────────────────────────────────────
 setInterval(async () => {
@@ -429,30 +424,24 @@ app.get('/api/health', (_, res) => res.json({ ok: true }));
 
 app.get('/api/status', (_, res) => {
   res.json({
-    main: {
+    bot: {
       online: mainOnline,
       uptime: Math.floor((Date.now() - mainStart) / 1000),
-      tag: mainBot.user?.tag ?? null,
-      ping: mainBot.ws.ping,
+      tag: bot.user?.tag ?? null,
+      ping: bot.ws.ping,
       commands: commandCount,
-    },
-    counter: {
-      online: counterOnline,
-      uptime: Math.floor((Date.now() - counterStart) / 1000),
-      tag: counterBot.user?.tag ?? null,
       lastCount,
     },
     logs: logs.slice(0, 100),
   });
 });
 
-app.post('/api/shutdown/:bot', (req, res) => {
+app.post('/api/shutdown', (req, res) => {
   const secret = req.headers['x-shutdown-key'];
   if (secret !== process.env.SHUTDOWN_KEY) return res.status(403).json({ error: 'Forbidden' });
-  const bot = req.params.bot;
-  if (bot === 'main') { mainBot.destroy(); mainOnline = false; log('WARN', 'Main bot shut down via dashboard'); }
-  if (bot === 'counter') { counterBot.destroy(); counterOnline = false; log('WARN', 'Counter bot shut down via dashboard'); }
-  if (bot === 'all') { mainBot.destroy(); counterBot.destroy(); mainOnline = false; counterOnline = false; log('WARN', 'All bots shut down via dashboard'); }
+  bot.destroy();
+  mainOnline = false;
+  log('WARN', 'Bot shut down via dashboard');
   res.json({ ok: true });
 });
 
@@ -497,38 +486,22 @@ main{max-width:1000px;margin:0 auto;padding:24px;display:grid;gap:20px}
   <div id="hstatus" style="font-size:11px;color:#555">Loading...</div>
 </header>
 <main>
-  <div class="grid2">
-    <div class="card" id="main-card">
-      <h2>⚔️ Main Bot</h2>
-      <div class="status"><div class="dot offline" id="main-dot"></div><span class="tag" id="main-tag">Offline</span></div>
-      <div class="meta" id="main-meta">—</div>
-      <div style="margin-top:16px">
-        <div class="stat"><span class="stat-label">Uptime</span><span class="stat-val" id="main-uptime">—</span></div>
-        <div class="stat"><span class="stat-label">Ping</span><span class="stat-val" id="main-ping">—</span></div>
-        <div class="stat"><span class="stat-label">Commands</span><span class="stat-val" id="main-cmds">—</span></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-red" onclick="shutdown('main')">Shut Down</button>
-      </div>
-    </div>
-    <div class="card" id="counter-card">
-      <h2>📊 Counter Bot</h2>
-      <div class="status"><div class="dot offline" id="counter-dot"></div><span class="tag" id="counter-tag">Offline</span></div>
-      <div class="meta" id="counter-meta">—</div>
-      <div style="margin-top:16px">
-        <div class="stat"><span class="stat-label">Uptime</span><span class="stat-val" id="counter-uptime">—</span></div>
-        <div class="stat"><span class="stat-label">Last Count</span><span class="stat-val" id="counter-count">—</span></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-red" onclick="shutdown('counter')">Shut Down</button>
-      </div>
+  <div class="card" id="bot-card">
+    <h2>🤖 vhxLUA Bot</h2>
+    <div class="status"><div class="dot offline" id="bot-dot"></div><span class="tag" id="bot-tag">Offline</span></div>
+    <div class="meta" id="bot-meta">—</div>
+    <div style="margin-top:16px">
+      <div class="stat"><span class="stat-label">Uptime</span><span class="stat-val" id="bot-uptime">—</span></div>
+      <div class="stat"><span class="stat-label">Ping</span><span class="stat-val" id="bot-ping">—</span></div>
+      <div class="stat"><span class="stat-label">Commands Processed</span><span class="stat-val" id="bot-cmds">—</span></div>
+      <div class="stat"><span class="stat-label">Last Exec Count</span><span class="stat-val" id="bot-count">—</span></div>
     </div>
   </div>
   <div class="card">
     <h2>🔴 Danger Zone</h2>
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
       <input class="key-input" type="password" id="shutdown-key" placeholder="Shutdown key...">
-      <button class="btn btn-red" onclick="shutdown('all')">Shut Down All Bots</button>
+      <button class="btn btn-red" onclick="shutdown()">Shut Down Bot</button>
     </div>
   </div>
   <div class="card">
@@ -543,26 +516,22 @@ async function refresh(){
   if(!r)return;
   const d=await r.json();
   document.getElementById('hstatus').textContent=new Date().toLocaleTimeString();
-  const m=d.main,c=d.counter;
-  document.getElementById('main-dot').className='dot '+(m.online?'online':'offline');
-  document.getElementById('main-tag').textContent=m.tag||(m.online?'Online':'Offline');
-  document.getElementById('main-meta').textContent=m.online?'Connected to Discord':'Not connected';
-  document.getElementById('main-uptime').textContent=fmt(m.uptime);
-  document.getElementById('main-ping').textContent=m.ping+'ms';
-  document.getElementById('main-cmds').textContent=m.commands;
-  document.getElementById('counter-dot').className='dot '+(c.online?'online':'offline');
-  document.getElementById('counter-tag').textContent=c.tag||(c.online?'Online':'Offline');
-  document.getElementById('counter-meta').textContent=c.online?'Connected to Discord':'Not connected';
-  document.getElementById('counter-uptime').textContent=fmt(c.uptime);
-  document.getElementById('counter-count').textContent=c.lastCount!=null?c.lastCount.toLocaleString():'—';
+  const b=d.bot;
+  document.getElementById('bot-dot').className='dot '+(b.online?'online':'offline');
+  document.getElementById('bot-tag').textContent=b.tag||(b.online?'Online':'Offline');
+  document.getElementById('bot-meta').textContent=b.online?'Connected to Discord':'Not connected';
+  document.getElementById('bot-uptime').textContent=fmt(b.uptime);
+  document.getElementById('bot-ping').textContent=b.ping+'ms';
+  document.getElementById('bot-cmds').textContent=b.commands;
+  document.getElementById('bot-count').textContent=b.lastCount!=null?b.lastCount.toLocaleString():'—';
   const con=document.getElementById('console');
   con.innerHTML=d.logs.map(l=>'<div><span class="log-time">'+new Date(l.time).toLocaleTimeString()+'</span><span class="log-'+l.level+'">['+(l.level)+'] '+l.msg+'</span></div>').join('');
 }
-async function shutdown(bot){
+async function shutdown(){
   const key=document.getElementById('shutdown-key').value;
   if(!key){alert('Enter shutdown key first');return}
-  if(!confirm('Shut down '+bot+'?'))return;
-  await fetch('/api/shutdown/'+bot,{method:'POST',headers:{'x-shutdown-key':key}});
+  if(!confirm('Shut down the bot?'))return;
+  await fetch('/api/shutdown',{method:'POST',headers:{'x-shutdown-key':key}});
   refresh();
 }
 refresh();setInterval(refresh,5000);
@@ -574,5 +543,5 @@ refresh();setInterval(refresh,5000);
 // ── START ─────────────────────────────────────────────────────────────────────
 app.listen(3000, '0.0.0.0', () => log('INFO', 'Web dashboard running on port 3000'));
 
-if (DISCORD_TOKEN_MAIN)    mainBot.login(DISCORD_TOKEN_MAIN).catch(e => log('ERROR', `Main bot login failed: ${e.message}`));
-if (DISCORD_TOKEN_COUNTER) counterBot.login(DISCORD_TOKEN_COUNTER).catch(e => log('ERROR', `Counter bot login failed: ${e.message}`));
+if (DISCORD_TOKEN_MAIN)    bot.login(DISCORD_TOKEN_MAIN).catch(e => log('ERROR', `Main bot login failed: ${e.message}`));
+if (DISCORD_TOKEN_COUNTER) bot.login(DISCORD_TOKEN_COUNTER).catch(e => log('ERROR', `Counter bot login failed: ${e.message}`));
