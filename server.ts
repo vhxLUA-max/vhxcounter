@@ -90,11 +90,17 @@ const commands = [
   new SlashCommandBuilder().setName('fpban').setDescription('Ban by device fingerprint').addStringOption(o => o.setName('username').setDescription('Roblox username').setRequired(true)).addStringOption(o => o.setName('reason').setDescription('Reason').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('fpunban').setDescription('Remove fingerprint ban').addStringOption(o => o.setName('username').setDescription('Roblox username').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('fpbans').setDescription('List fingerprint bans').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('hwidban').setDescription('Ban by HWID').addStringOption(o => o.setName('username').setDescription('Roblox username').setRequired(true)).addStringOption(o => o.setName('reason').setDescription('Reason').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('hwidunban').setDescription('Remove HWID ban').addStringOption(o => o.setName('username').setDescription('Roblox username').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('hwidbans').setDescription('List HWID bans').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('vpnflags').setDescription('List VPN/proxy flagged users').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('tokens').setDescription('List verified tokens').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('user').setDescription('Look up user by token').addStringOption(o => o.setName('token').setDescription('Dashboard token').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('banlog').setDescription('Ban audit trail').addIntegerOption(o => o.setName('limit').setDescription('Number of entries').setMinValue(1).setMaxValue(50)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('suspicious').setDescription('Find potential botters').addIntegerOption(o => o.setName('threshold').setDescription('Threshold').setMinValue(1)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('addchangelog').setDescription('Add changelog entry').addStringOption(o => o.setName('game').setDescription('Game').setRequired(true)).addStringOption(o => o.setName('type').setDescription('Type').setRequired(true).addChoices({ name: 'New', value: 'new' }, { name: 'Update', value: 'update' }, { name: 'Fix', value: 'fix' })).addStringOption(o => o.setName('title').setDescription('Title').setRequired(true)).addStringOption(o => o.setName('body').setDescription('Body').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('maintenance').setDescription('Toggle maintenance mode for a game').addStringOption(o => o.setName('game').setDescription('Game name').setRequired(true).addChoices({ name: 'Pixel Blade', value: 'Pixel Blade' }, { name: 'Loot Hero', value: 'Loot Hero' }, { name: 'Flick', value: 'Flick' }, { name: 'Survive Lava', value: 'Survive Lava' }, { name: 'UNC Tester', value: 'UNC Tester' })).addStringOption(o => o.setName('action').setDescription('Enable or disable').setRequired(true).addChoices({ name: 'Enable maintenance', value: 'off' }, { name: 'Disable maintenance (go live)', value: 'on' })).addStringOption(o => o.setName('message').setDescription('Maintenance message').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('gamestatus').setDescription('Show maintenance status of all games').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -345,6 +351,52 @@ bot.on('interactionCreate', async interaction => {
     await interaction.editReply({ embeds: [embed] });
   }
 
+  if (commandName === 'hwidban') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const username = interaction.options.getString('username')!;
+    const reason   = interaction.options.getString('reason')!;
+    const { data: rows } = await supabase.from('unique_users').select('roblox_user_id,username,hwid').ilike('username', username).limit(1);
+    const user = rows?.[0] as any;
+    if (!user) return interaction.editReply({ content: `❌ **${username}** not found.` });
+    if (!user.hwid) return interaction.editReply({ content: `❌ No HWID found for **${username}**. They need to run the script again.` });
+    const { error } = await supabase.from('hwid_bans').insert({ hwid: user.hwid, roblox_user_id: user.roblox_user_id, username: user.username, reason });
+    if (error) return interaction.editReply({ content: `❌ ${error.message}` });
+    log('INFO', `@${user.username} HWID banned — ${reason}`, 'ban');
+    const embed = new EmbedBuilder().setTitle('🔒 HWID Banned').setColor(0xef4444)
+      .setDescription([`> 👤 **User** — @${user.username}`, `> 🔑 **HWID** — \`${user.hwid}\``, `> 📋 **Reason** — ${reason}`].join('\n'));
+    await interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'hwidunban') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const username = interaction.options.getString('username')!;
+    const { data: rows } = await supabase.from('hwid_bans').select('id,username').ilike('username', username).limit(1);
+    if (!rows?.length) return interaction.editReply({ content: `❌ No HWID ban found for **${username}**.` });
+    await supabase.from('hwid_bans').delete().eq('id', (rows[0] as any).id);
+    log('INFO', `@${username} HWID ban removed`, 'unban');
+    await interaction.editReply({ content: `✅ HWID ban removed for **@${username}**` });
+  }
+
+  if (commandName === 'hwidbans') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const { data } = await supabase.from('hwid_bans').select('*').order('created_at', { ascending: false });
+    const embed = new EmbedBuilder().setTitle(`🔒 HWID Bans (${data?.length ?? 0})`).setColor(0xef4444)
+      .setDescription(data?.length ? data.slice(0,20).map((b: any) => `> 🔒 **@${b.username}** — \`${b.hwid}\` — ${b.reason ?? 'No reason'} *(${timeAgo(b.created_at)})*`).join('\n') : 'No HWID bans.');
+    await interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'vpnflags') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const { data } = await supabase.from('vpn_flags').select('*').order('detected_at', { ascending: false }).limit(20);
+    const embed = new EmbedBuilder().setTitle(`🌐 VPN/Proxy Flags (${data?.length ?? 0})`).setColor(0xf59e0b)
+      .setDescription(data?.length ? data.map((f: any) => `> ⚠️ **@${f.username}** — ${f.provider ?? '?'} (${f.country ?? '?'}) *(${timeAgo(f.detected_at)})*`).join('\n') : 'No VPN flags.');
+    await interaction.editReply({ embeds: [embed] });
+  }
+
   if (commandName === 'addchangelog') {
     if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true });
@@ -355,6 +407,39 @@ bot.on('interactionCreate', async interaction => {
     await supabase.from('changelog').insert({ game, type, title, body, date: new Date().toISOString().slice(0, 10) });
     log('INFO', `[changelog] [${type}] ${game} — ${title}`, 'changelog');
     await interaction.editReply({ content: `✅ Changelog entry added — **[${type}] ${title}**` });
+  }
+
+  if (commandName === 'maintenance') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const game    = interaction.options.getString('game')!;
+    const action  = interaction.options.getString('action')!;
+    const message = interaction.options.getString('message') ?? 'This script is under maintenance. Check back soon.';
+    const enabled = action === 'on';
+    await supabase.from('game_status').upsert({ game_name: game, enabled, maintenance_message: message, updated_at: new Date().toISOString() }, { onConflict: 'game_name' });
+    log('INFO', `${game} maintenance ${enabled ? 'disabled' : 'enabled'}`, 'system');
+    const embed = new EmbedBuilder()
+      .setTitle(enabled ? '✅ Script Live' : '🔧 Maintenance Mode')
+      .setColor(enabled ? 0x22c55e : 0xf59e0b)
+      .setDescription([
+        `> 🎮 **Game** — ${game}`,
+        `> 📡 **Status** — ${enabled ? '`LIVE`' : '`MAINTENANCE`'}`,
+        ...(enabled ? [] : [`> 💬 **Message** — ${message}`]),
+      ].join('\n'));
+    await interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'gamestatus') {
+    if (!admin) return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const { data } = await supabase.from('game_status').select('*').order('game_name');
+    const embed = new EmbedBuilder()
+      .setTitle('📡 Game Status')
+      .setColor(0x6366f1)
+      .setDescription((data ?? []).map((g: any) =>
+        `> ${g.enabled ? '🟢' : '🔴'} **${g.game_name}** — ${g.enabled ? '`LIVE`' : '`MAINTENANCE`'}`
+      ).join('\n') || '> No games found');
+    await interaction.editReply({ embeds: [embed] });
   }
 });
 
