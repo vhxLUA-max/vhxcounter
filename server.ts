@@ -404,9 +404,33 @@ bot.on('interactionCreate', async interaction => {
     const type  = interaction.options.getString('type')!;
     const title = interaction.options.getString('title')!;
     const body  = interaction.options.getString('body') ?? '';
-    await supabase.from('changelog').insert({ game, type, title, body, date: new Date().toISOString().slice(0, 10) });
+    const date  = new Date().toISOString().slice(0, 10);
+    await supabase.from('changelog').insert({ game, type, title, body, date });
     log('INFO', `[changelog] [${type}] ${game} — ${title}`, 'changelog');
-    await interaction.editReply({ content: `✅ Changelog entry added — **[${type}] ${title}**` });
+
+    const WEBHOOK = 'https://discord.com/api/webhooks/1475304437177385052/D6bMTTr-Y-h5DHkLAvqVEKZ7Yx7ioyqcnm5yIBzk0Dyk82VxhHe_sMlOISMVLjD52cHF';
+    const typeLabel = type === 'new' ? 'New' : type === 'update' ? 'Update' : 'Fix';
+    const color = type === 'new' ? 0x10b981 : type === 'update' ? 0x6366f1 : 0xf59e0b;
+    await fetch(WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'vhxLUA Updates',
+        embeds: [{
+          title: 'Changelog',
+          description: 'A new update has just dropped.',
+          color,
+          fields: [
+            { name: 'What\'s New', value: `+ ${title}${body ? `\n${body}` : ''}`, inline: false },
+            { name: 'Game', value: game, inline: true },
+            { name: 'Type', value: typeLabel, inline: true },
+          ],
+          footer: { text: `Thanks for using the script. | ${date}` },
+        }],
+      }),
+    }).catch(() => {});
+
+    await interaction.editReply({ content: `✅ Changelog added and posted to Discord — **[${type}] ${title}**` });
   }
 
   if (commandName === 'maintenance') {
