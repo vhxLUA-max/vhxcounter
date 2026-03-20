@@ -1,0 +1,11 @@
+name: vhxlua-bot
+services:
+  - name: bot
+    type: web
+    run_command: npx tsx server.ts
+    ports:
+      - port: 3000
+        protocol: http
+    env:
+      - key: NODE_ENV
+        value: production

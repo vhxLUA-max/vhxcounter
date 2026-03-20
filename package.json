@@ -3,8 +3,8 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "start": "npx tsx server.ts",
-    "dev": "npx tsx --watch server.ts"
+    "start": "node --import tsx/esm server.ts",
+    "dev": "npx tsx server.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
