@@ -411,21 +411,26 @@ bot.on('interactionCreate', async interaction => {
     const WEBHOOK = 'https://discord.com/api/webhooks/1475304437177385052/D6bMTTr-Y-h5DHkLAvqVEKZ7Yx7ioyqcnm5yIBzk0Dyk82VxhHe_sMlOISMVLjD52cHF';
     const typeLabel = type === 'new' ? 'New' : type === 'update' ? 'Update' : 'Fix';
     const color = type === 'new' ? 0x10b981 : type === 'update' ? 0x6366f1 : 0xf59e0b;
+    const tag = type === 'new' ? '[ NEW ]' : type === 'update' ? '[ UPDATE ]' : '[ FIX ]';
+    const sep = '\u2015'.repeat(28);
+    const lines = [
+      `\`\`\`ansi\n\u001b[2;36m vhxLUA \u2502 Script Update \u2502 ${game}\u001b[0m\`\`\``,
+      sep,
+      `**${tag}  ${title}**`,
+      body ? `\`\`\`\n${body}\`\`\`` : '',
+      sep,
+      `\`\`\`ansi\n\u001b[2;32m  SCRIPT   \u2502  vhxlua.vercel.app\n\u001b[2;90m  RELEASED \u2502  ${date}\u001b[0m\`\`\``,
+    ].filter(Boolean).join('\n');
     await fetch(WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: 'vhxLUA Updates',
+        username: 'vhxLUA',
+        avatar_url: 'https://vhxlua.vercel.app/favicon.ico',
         embeds: [{
-          title: 'Changelog',
-          description: 'A new update has just dropped.',
+          description: lines,
           color,
-          fields: [
-            { name: 'What\'s New', value: `+ ${title}${body ? `\n${body}` : ''}`, inline: false },
-            { name: 'Game', value: game, inline: true },
-            { name: 'Type', value: typeLabel, inline: true },
-          ],
-          footer: { text: `Thanks for using the script. | ${date}` },
+          footer: { text: 'vhxLUA \u2022 Script Hub' },
         }],
         components: [{ type: 1, components: [{ type: 2, style: 5, label: 'Get Script', url: 'https://vhxlua.vercel.app/?tab=scripts' }] }],
       }),
