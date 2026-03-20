@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
+import { Server as SocketServer } from 'socket.io';
+import morgan from 'morgan';
 import { createClient } from '@supabase/supabase-js';
 import {
   Client, GatewayIntentBits, REST, Routes,
@@ -8,6 +10,7 @@ import {
 } from 'discord.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger, initLogger, getBuffer } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,7 +34,9 @@ const log = (level: 'INFO' | 'WARN' | 'ERROR', msg: string, type = 'system') => 
   const entry = { time: new Date().toISOString(), level, msg };
   logs.unshift(entry);
   if (logs.length > 500) logs.pop();
-  console.log(`[${level}] ${msg}`);
+  if (level === 'ERROR') logger.error('system', msg);
+  else if (level === 'WARN') logger.warn('system', msg);
+  else logger.info('system', msg);
   supabase.from('console_logs').insert({ level, msg, type }).then(() => {}).catch(() => {});
 };
 
@@ -355,7 +360,7 @@ bot.on('interactionCreate', async interaction => {
 
 bot.once('ready', async () => {
   mainOnline = true;
-  log('INFO', `Bot online — ${bot.user?.tag}`);
+  logger.success('bot', `Bot online — ${bot.user?.tag}`);
   registerCommands();
   await updateEmbed();
   await updateChannelName();
@@ -400,8 +405,8 @@ async function updateChannelName() {
   try {
     const channel = await bot.channels.fetch(COUNTER_CHANNEL_ID) as any;
     await channel.setName(`exec-count-${total.toLocaleString()}`);
-    log('INFO', `Counter channel renamed — ${total.toLocaleString()} total execs`, 'execution');
-  } catch (e: any) { log('WARN', `Channel rename failed: ${e.message}`); }
+    logger.info('bot', `Counter channel renamed — ${total.toLocaleString()} total execs`, 'execution');
+  } catch (e: any) { logger.warn('bot', `Channel rename failed: ${e.message}`); }
 }
 
 // ── BACKGROUND JOBS ───────────────────────────────────────────────────────────
@@ -418,8 +423,72 @@ setInterval(() => {
 }, 240000);
 
 // ── WEB DASHBOARD ─────────────────────────────────────────────────────────────
-const app = express();
+const app    = express();
+const httpServer = createServer(app);
+const io     = new SocketServer(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+
+initLogger(io);
+
 app.use(express.json());
+
+app.use(morgan((tokens, req, res) => {
+  const status = parseInt(tokens.status?.(req, res) ?? '0');
+  const method = tokens.method?.(req, res) ?? '';
+  const url    = tokens.url?.(req, res) ?? '';
+  const ms     = tokens['response-time']?.(req, res) ?? '?';
+  const level  = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+  logger[level]('network', `${method} ${url} ${status} — ${ms}ms`);
+  return null;
+}));
+
+// Socket.io auth — only admins join admin_stream
+io.use((socket, next) => {
+  const key = socket.handshake.auth?.adminKey;
+  if (key && key === process.env.SHUTDOWN_KEY) {
+    (socket as any).isAdmin = true;
+    return next();
+  }
+  next(new Error('Unauthorized'));
+});
+
+io.on('connection', (socket) => {
+  if (!(socket as any).isAdmin) return socket.disconnect();
+  socket.join('admin_stream');
+  logger.success('auth', `Admin connected — ${socket.id}`);
+
+  // Send buffer immediately on connect
+  socket.emit('log_buffer', getBuffer());
+
+  // Command handler
+  socket.on('command', async (cmd: string) => {
+    const c = cmd.trim().toLowerCase();
+    logger.info('command', `> ${cmd}`);
+
+    if (c === '/status') {
+      logger.info('system', `Bot: ${mainOnline ? 'ONLINE' : 'OFFLINE'} | Uptime: ${Math.floor((Date.now() - mainStart) / 1000)}s | Ping: ${bot.ws.ping}ms | Commands: ${commandCount}`);
+    } else if (c === '/clear-cache') {
+      logs.length = 0;
+      logger.success('system', 'In-memory log cache cleared');
+    } else if (c === '/executions') {
+      const { data } = await supabase.from('game_executions').select('game_name,count').order('count', { ascending: false });
+      data?.forEach((r: any) => logger.info('db', `${r.game_name}: ${r.count?.toLocaleString()} execs`));
+    } else if (c === '/bans') {
+      const { data } = await supabase.from('banned_users').select('username,reason').limit(10);
+      logger.info('db', `Active bans: ${data?.length ?? 0}`);
+      data?.forEach((b: any) => logger.info('db', `  @${b.username} — ${b.reason}`));
+    } else if (c === '/help') {
+      ['/status', '/executions', '/bans', '/clear-cache', '/help'].forEach(h => logger.info('system', h));
+    } else {
+      logger.warn('command', `Unknown command: ${cmd}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    logger.warn('auth', `Admin disconnected — ${socket.id}`);
+  });
+});
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
@@ -542,7 +611,7 @@ refresh();setInterval(refresh,5000);
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
-app.listen(3000, '0.0.0.0', () => log('INFO', 'Web dashboard running on port 3000'));
+httpServer.listen(3000, '0.0.0.0', () => logger.success('system', 'Web dashboard + Socket.io running on port 3000'));
 
 if (DISCORD_TOKEN_MAIN)    bot.login(DISCORD_TOKEN_MAIN).catch(e => log('ERROR', `Main bot login failed: ${e.message}`));
 if (DISCORD_TOKEN_COUNTER) bot.login(DISCORD_TOKEN_COUNTER).catch(e => log('ERROR', `Counter bot login failed: ${e.message}`));
