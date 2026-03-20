@@ -427,6 +427,7 @@ bot.on('interactionCreate', async interaction => {
           ],
           footer: { text: `Thanks for using the script. | ${date}` },
         }],
+        components: [{ type: 1, components: [{ type: 2, style: 5, label: 'Get Script', url: 'https://vhxlua.vercel.app/?tab=scripts' }] }],
       }),
     }).catch(() => {});
 
