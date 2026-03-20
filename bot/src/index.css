@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-[#050505] text-[#E0E0E0];
+    background-image: 
+      linear-gradient(to right, #1A1A1A 1px, transparent 1px),
+      linear-gradient(to bottom, #1A1A1A 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-black;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-[#1A1A1A] rounded-full hover:bg-[#333] transition-colors;
+  }
+}
