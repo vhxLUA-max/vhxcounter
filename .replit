@@ -1,0 +1,12 @@
+run = "npx tsx server.ts"
+entrypoint = "server.ts"
+
+[env]
+PORT = "3000"
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
