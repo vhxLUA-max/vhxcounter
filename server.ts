@@ -27,11 +27,12 @@ const APP_URL        = process.env.APP_URL || '';
 const isAdmin = (id: string) => ADMIN_IDS.includes(id);
 
 const logs: { time: string; level: string; msg: string }[] = [];
-const log = (level: 'INFO' | 'WARN' | 'ERROR', msg: string) => {
+const log = (level: 'INFO' | 'WARN' | 'ERROR', msg: string, type = 'system') => {
   const entry = { time: new Date().toISOString(), level, msg };
   logs.unshift(entry);
   if (logs.length > 500) logs.pop();
   console.log(`[${level}] ${msg}`);
+  supabase.from('console_logs').insert({ level, msg, type }).then(() => {}).catch(() => {});
 };
 
 // ── MAIN BOT ─────────────────────────────────────────────────────────────────
@@ -207,7 +208,7 @@ bot.on('interactionCreate', async interaction => {
     const user = rows?.[0];
     if (!user) return interaction.editReply({ content: `❌ **${username}** not found.` });
     await supabase.from('banned_users').insert({ roblox_user_id: user.roblox_user_id, username: user.username, reason });
-    log('INFO', `Banned @${user.username} — ${reason}`);
+    log('INFO', `@${user.username} banned — ${reason}`, 'ban');
     const embed = new EmbedBuilder().setTitle('🔨 User Banned').setColor(0xef4444).setDescription([`> 👤 **User** — @${user.username}`, `> 📋 **Reason** — ${reason}`, `> 🛡️ **By** — <@${interaction.user.id}>`].join('\n'));
     await interaction.editReply({ embeds: [embed] });
   }
@@ -217,7 +218,7 @@ bot.on('interactionCreate', async interaction => {
     await interaction.deferReply({ ephemeral: true });
     const username = interaction.options.getString('username')!;
     await supabase.from('banned_users').delete().ilike('username', username);
-    log('INFO', `Unbanned @${username}`);
+    log('INFO', `@${username} unbanned`, 'unban');
     await interaction.editReply({ content: `✅ **@${username}** unbanned.` });
   }
 
@@ -243,7 +244,7 @@ bot.on('interactionCreate', async interaction => {
     const user = rows?.[0];
     if (!user) return interaction.editReply({ content: `❌ **${username}** not found.` });
     await supabase.from('banned_users').insert({ roblox_user_id: user.roblox_user_id, username: user.username, reason: `[SOFTBAN until ${new Date(unbanAt).toUTCString()}] ${reason}`, unban_at: unbanAt });
-    log('INFO', `Softbanned @${user.username} for ${duration} ${unit}`);
+    log('INFO', `@${user.username} softbanned for ${duration} ${unit} — ${reason}`, 'ban');
     const embed = new EmbedBuilder().setTitle('⏱️ Softban Applied').setColor(0xf59e0b).setDescription([`> 👤 **User** — @${user.username}`, `> ⏳ **Duration** — \`${duration} ${unit}\``, `> 📅 **Unbans At** — \`${new Date(unbanAt).toUTCString()}\``, `> 📋 **Reason** — ${reason}`].join('\n'));
     await interaction.editReply({ embeds: [embed] });
   }
@@ -314,7 +315,7 @@ bot.on('interactionCreate', async interaction => {
     if (!user) return interaction.editReply({ content: `❌ **${username}** not found.` });
     if (!user.fingerprint) return interaction.editReply({ content: `❌ No fingerprint for **${username}**. They need to run the script again.` });
     await supabase.from('fingerprint_bans').insert({ fingerprint: user.fingerprint, roblox_user_id: user.roblox_user_id, username: user.username, reason });
-    log('INFO', `FP banned @${user.username}`);
+    log('INFO', `@${user.username} device banned — ${reason} (${user.fingerprint})`, 'fpban');
     const embed = new EmbedBuilder().setTitle('🔒 Device Banned').setColor(0xef4444).setDescription([`> 👤 **User** — @${user.username}`, `> 🔑 **Fingerprint** — \`${user.fingerprint}\``, `> 📋 **Reason** — ${reason}`].join('\n'));
     await interaction.editReply({ embeds: [embed] });
   }
@@ -326,7 +327,7 @@ bot.on('interactionCreate', async interaction => {
     const { data: rows } = await supabase.from('fingerprint_bans').select('id,username').ilike('username', username).limit(1);
     if (!rows?.length) return interaction.editReply({ content: `❌ No device ban for **${username}**.` });
     await supabase.from('fingerprint_bans').delete().eq('id', rows[0].id);
-    log('INFO', `FP unbanned @${username}`);
+    log('INFO', `@${username} device ban removed`, 'fpunban');
     await interaction.editReply({ content: `✅ Device ban removed for **@${rows[0].username}**` });
   }
 
@@ -347,7 +348,7 @@ bot.on('interactionCreate', async interaction => {
     const title = interaction.options.getString('title')!;
     const body  = interaction.options.getString('body') ?? '';
     await supabase.from('changelog').insert({ game, type, title, body, date: new Date().toISOString().slice(0, 10) });
-    log('INFO', `Changelog added: [${type}] ${title}`);
+    log('INFO', `[changelog] [${type}] ${game} — ${title}`, 'changelog');
     await interaction.editReply({ content: `✅ Changelog entry added — **[${type}] ${title}**` });
   }
 });
@@ -399,7 +400,7 @@ async function updateChannelName() {
   try {
     const channel = await bot.channels.fetch(COUNTER_CHANNEL_ID) as any;
     await channel.setName(`exec-count-${total.toLocaleString()}`);
-    log('INFO', `Counter channel renamed to exec-count-${total.toLocaleString()}`);
+    log('INFO', `Counter channel renamed — ${total.toLocaleString()} total execs`, 'execution');
   } catch (e: any) { log('WARN', `Channel rename failed: ${e.message}`); }
 }
 
@@ -408,7 +409,7 @@ setInterval(async () => {
   const { data } = await supabase.from('banned_users').select('id,username').lte('unban_at', new Date().toISOString()).not('unban_at', 'is', null);
   for (const row of data ?? []) {
     await supabase.from('banned_users').delete().eq('id', row.id);
-    log('INFO', `Auto-unbanned @${row.username}`);
+    log('INFO', `@${row.username} auto-unbanned (softban expired)`, 'unban');
   }
 }, 60000);
 
